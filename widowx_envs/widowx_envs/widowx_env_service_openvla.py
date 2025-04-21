@@ -45,7 +45,7 @@ class WidowXConfigs:
 
     DefaultActionConfig = ActionConfig(
         port_number=5556,
-        action_keys=["init", "move", "gripper", "reset", "step_action"],
+        action_keys=["init", "move", "gripper", "reset", "step_action", "reboot_motor"],
         observation_keys=["image", "state", "full_image"],
         broadcast_port=5556 + 1,
     )
@@ -92,6 +92,7 @@ class WidowXActionServer():
             "move": self.__move,
             "step_action": self.__step_action,
             "reset": self.__reset,
+            "reboot_motor": self.__reboot_motor,
         }
 
     def start(self, threaded: bool = False):
@@ -170,6 +171,12 @@ class WidowXActionServer():
         self.init_robot(payload["env_params"], payload["image_size"])
         return WidowXStatus.SUCCESS
 
+    def __reboot_motor(self, payload) -> WidowXStatus:
+        joint_name = payload["joint_name"]
+        print(f"Experimental: Rebooting motor {joint_name}")
+        self.bridge_env.controller().reboot_motor(joint_name)
+        return WidowXStatus.SUCCESS
+
     def __observe(self, types: list) -> dict:
         if self.bridge_env:
             # we will default return image and proprio only
@@ -204,7 +211,7 @@ class WidowXActionServer():
                 eep,
                 duration=payload["duration"],
                 blocking=payload["blocking"],
-                step=False
+                step=False,
             )
             self.bridge_env._reset_previous_qpos()
         except Environment_Exception as e:
@@ -223,6 +230,8 @@ class WidowXActionServer():
         # self.bridge_env.controller().move_to_neutral(duration=1.0)
         # self.bridge_env.controller().open_gripper()
         self.bridge_env.reset()
+        obs = self.bridge_env.current_obs()
+        print("JOINTS: ", obs["joints"])
         self.bridge_env.start()
         return WidowXStatus.SUCCESS
 
@@ -312,6 +321,14 @@ class WidowXClient():
         """Stop the client."""
         self.__client.stop()
 
+    def reboot_motor(self, joint_name: str):
+        """Experimentation: Force Reboot the motor.
+        Supported joint names:
+            - waist, shoulder, elbow, forearm_roll,
+            - wrist_angle, wrist_rotate, gripper, left_finger, right_finger
+        """
+        self.__client.act("reboot_motor", {"joint_name": joint_name})
+
 ##############################################################################
 
 
@@ -332,8 +349,6 @@ def show_video(client, duration, full_image=True):
             img = (img.reshape(3, 256, 256).transpose(1, 2, 0) * 255).astype(np.uint8)
         cv2.imshow("img", img)
         cv2.waitKey(10)  # 10 ms
-
-
 
 
 def main():
@@ -378,6 +393,8 @@ def main():
             trust_remote_code=True,
             device_map="auto",
         )
+        
+        # import pdb; pdb.set_trace()
 
 
         # This ensures that the robot is ready to be controlled
@@ -388,7 +405,7 @@ def main():
             obs = None
             while obs is None:
                 obs = widowx_client.get_observation()
-                time.sleep(1)
+                time.sleep(0.5)
                 print("Waiting for robot to be ready...")
             
             img = Image.fromarray(obs['full_image'])
@@ -400,7 +417,6 @@ def main():
             action = vla.predict_action(**inputs, unnorm_key="bridge_orig", do_sample=False)
             print("Predicted Action:", action)
             res = widowx_client.step_action(action)
-            time.sleep(1)
         
         # print(obs.keys, obs)
         # print(type(obs['full_image']))
