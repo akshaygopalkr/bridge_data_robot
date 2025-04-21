@@ -30,7 +30,6 @@ class OPENVLAInference:
         model_id_or_path: Optional[str] = None,
     ) -> None:
         
-        hf_token = "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"
         self.model_id = model_id_or_path
         self.input_processor = AutoProcessor.from_pretrained("openvla/openvla-7b", trust_remote_code=True)
         device_id = 1
