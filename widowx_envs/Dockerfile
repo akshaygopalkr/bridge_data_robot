@@ -95,6 +95,16 @@ RUN git clone https://github.com/youliangtan/edgeml && \
     cd edgeml && \
     pip3 install -e .
 
+RUN git clone https://github.com/openvla/openvla.git && cd openvla && \
+    python3 -m pip install --upgrade pip && pip install networkx==2.8.8 && \
+    pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+
+RUN cd openvla && pip install transformers==4.40.1 tokenizers==0.19.1 timm==0.9.10 accelerate && \
+    pip install packaging ninja && \
+    pip install "flash-attn==2.5.5" --no-build-isolation
+
+RUN pip install scipy==1.4.0 && pip install -U scipy
+
 # Create alias to python3 widowx_envs/widowx_envs/widowx_env_service.py
 # This is a workaround for pip3 install -e .
 RUN echo 'alias widowx_env_service="python3 ~/widowx_envs/widowx_envs/widowx_env_service.py"' >> ~/.bashrc

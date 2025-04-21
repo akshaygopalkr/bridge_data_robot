@@ -3,11 +3,11 @@ protobuf
 funcsigs
 future
 imageio
-imageio-ffmpeg<0.5.0
+imageio-ffmpeg
 matplotlib
-moviepy
+moviepy==1.0.0
 opencv-python
-numpy>=1.23.4
+numpy==1.22.0
 pyquaternion
 scikit-learn
 scikit-image
@@ -25,5 +25,4 @@ joblib
 pickle5
 h5py
 funcsigs
-numba
 git+https://github.com/rail-berkeley/oculus_reader.git
