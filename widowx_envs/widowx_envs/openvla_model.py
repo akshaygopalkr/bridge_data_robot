@@ -26,7 +26,7 @@ class OPENVLAInference:
         image_height: int = 224,
         action_scale: float = 1.0,
         device_id: int = 1,
-        policy_setup: str = "google_robot",
+        policy_setup: str = "widowx_bridge",
         model_id_or_path: Optional[str] = None,
     ) -> None:
         
@@ -403,7 +403,7 @@ class OPENVLAInference:
         flag = True
         while flag:
             text_ids = self.str_sample(Image.fromarray(image), prompt, inputs["input_ids"],
-                                       unnorm_key="fractal20220817_data", do_sample=True)
+                                       unnorm_key="bridge_dataset", do_sample=True)
             text_answer = text_ids #t_tokenizer.batch_decode(text_ids)[0]
             if len(text_answer.split(','))>=7:
                 flag=False
@@ -413,9 +413,9 @@ class OPENVLAInference:
         try:
             for t in text_answer.split(',')[:7]:
                 actions.append(float(t))
-            _actions = self.normalize_act(np.array(actions), "fractal20220817_data")
+            _actions = self.normalize_act(np.array(actions), "bridge_dataset")
         except Exception as e:
-            _actions = self.normalize_act(np.array([0,0,0,0,0,0,0]), "fractal20220817_data")
+            _actions = self.normalize_act(np.array([0,0,0,0,0,0,0]), "bridge_dataset")
         
         #a= self.save_features(**inputs)
         raw_action = {
