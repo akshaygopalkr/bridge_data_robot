@@ -357,8 +357,9 @@ def main():
     parser.add_argument('--port', type=int, default=5556)
     parser.add_argument('--test', action='store_true', help='run in test mode')
     parser.add_argument('--num-episodes', type=int, default=1)
-    parser.add_argument('--num-steps', type=int, default=113)
-    parser.add_argument('--model-checkpoint', type=str, default='agopalkr/openvla-bridge-cot')
+    parser.add_argument('--num-steps', type=int, default=180)
+    parser.add_argument('--model-checkpoint', type=str, default='agopalkr/openvla-cot-st-bridge')
+    parser.add_argument('--task', type=str, default='put carrot on plate')
     args = parser.parse_args()
 
     if args.server:
@@ -379,6 +380,8 @@ def main():
         widowx_server.stop()
 
     if args.client:
+        
+        
 
         model = OPENVLAInference(model_id_or_path=args.model_checkpoint)
         

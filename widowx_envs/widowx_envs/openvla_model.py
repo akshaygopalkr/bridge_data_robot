@@ -2,14 +2,13 @@ from collections import defaultdict
 from typing import Optional, Sequence
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
-from prismatic import load_vla
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from transforms3d.euler import euler2axangle
 from transformers import AutoModelForVision2Seq, AutoProcessor
 from PIL import Image
-from prismatic.models.backbones.llm.prompting import LLaMa2ChatPromptBuilder
 import transformers
 import torch
 from transformers import AutoTokenizer
@@ -31,7 +30,7 @@ class OPENVLAInference:
     ) -> None:
         
         self.model_id = model_id_or_path
-        self.input_processor = AutoProcessor.from_pretrained("openvla/openvla-7b", trust_remote_code=True)
+        self.input_processor = AutoProcessor.from_pretrained(self.model_id, trust_remote_code=True)
         device_id = 1
         self.device_id = device_id
             
@@ -90,7 +89,7 @@ class OPENVLAInference:
 
     @staticmethod
     def _rescale_action_with_bound(
-        actions: np.ndarray | torch.Tensor,
+        actions: np.ndarray,
         low: float,
         high: float,
         safety_margin: float = 0.0,
@@ -105,7 +104,7 @@ class OPENVLAInference:
             post_scaling_max - safety_margin,
         )
 
-    def _unnormalize_action_widowx_bridge(self, action: dict[str, np.ndarray | torch.Tensor]) -> dict[str, np.ndarray]:
+    def _unnormalize_action_widowx_bridge(self, action):
         action["world_vector"] = self._rescale_action_with_bound(
             action["world_vector"],
             low=-1.75,
@@ -125,7 +124,7 @@ class OPENVLAInference:
 
         # Run LLM Forward --> returns CausalLMOutputWithPast!
         return generated_feats 
-    def _resize_image(self, image: np.ndarray | torch.Tensor) -> torch.Tensor:
+    def _resize_image(self, image) -> torch.Tensor:
         #image = tf.image.resize_with_pad(image, target_width=self.image_width, target_height=self.image_height)
         #image = tf.cast(image, tf.uint8)
         return image
@@ -150,7 +149,7 @@ class OPENVLAInference:
         self._initialize_task_description(task_description)
 
     @staticmethod
-    def _small_action__filter_google_robot(raw_action: dict[str, np.ndarray | torch.Tensor], arm_movement: bool = False, gripper: bool = True) -> dict[str, np.ndarray | torch.Tensor]:
+    def _small_action__filter_google_robot(raw_action, arm_movement: bool = False, gripper: bool = True) -> dict:
         # small action filtering for google robot
         if arm_movement:
             raw_action["world_vector"] = torch.where(
@@ -344,14 +343,16 @@ class OPENVLAInference:
         return language_model_output
 
     def str_sample(self,
-         image,prompt_text, input_ids, unnorm_key: Optional[str] = None, **kwargs: str
+         inputs, **kwargs: str
     ) -> np.ndarray:
-        # input_ids = torch.cat(
-        #     (inputs["input_ids"], torch.unsqueeze(torch.Tensor([29871]).long(), dim=0).to(inputs["input_ids"].device)), dim=1)
+        
+        # print(kwargs)
+        input_ids = torch.cat(
+              (inputs["input_ids"], torch.unsqueeze(torch.Tensor([29871]).long(), dim=0).to(inputs["input_ids"].device)), dim=1)
 
 
         # Run VLA inference
-        generated_ids = self.policy.generate(image,prompt_text, max_new_tokens=200, **kwargs)
+        generated_ids = self.policy.generate(input_ids, max_new_tokens=200, **kwargs)
         return generated_ids
         
         
@@ -365,7 +366,7 @@ class OPENVLAInference:
         actions = np.where(mask,0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low, normalized_actions)
         return actions
     
-    def step(self, image: np.ndarray, task_description: Optional[str] = None) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    def step(self, image: np.ndarray, task_description = None):
         """
         Input:
             image: np.ndarray of shape (H, W, 3), uint8
@@ -395,15 +396,13 @@ class OPENVLAInference:
         
         #self.unnorm_key = "bridge_dataset"
         #Use if not using string tokenizer
-        _actions = self.policy.predict_action(Image.fromarray(image), task_description, unnorm_key=self.unnorm_key, do_sample=False)
+        # _actions = self.policy.predict_action(Image.fromarray(image), task_description, unnorm_key=self.unnorm_key, do_sample=False)
         #String tokenizer
-        
-        inputs = self.input_processor(prompt, Image.fromarray(image)).to("cuda:0", dtype=torch.bfloat16)
-        #print(inputs.keys())
+    
+        inputs = self.input_processor(prompt, image).to('cuda:0', dtype=torch.bfloat16)
         flag = True
         while flag:
-            text_ids = self.str_sample(Image.fromarray(image), prompt, inputs["input_ids"],
-                                       unnorm_key="bridge_dataset", do_sample=True)
+            text_ids = self.str_sample(inputs, do_sample=True)
             text_answer = text_ids #t_tokenizer.batch_decode(text_ids)[0]
             if len(text_answer.split(','))>=7:
                 flag=False
@@ -458,21 +457,19 @@ class OPENVLAInference:
                 self.sticky_gripper_action = 0.0
 
             print(relative_gripper_action)
-            action["gripper"] = relative_gripper_action
+            action# Extract predicted action tokens and translate into (normalized) continuous actions
+        predicted_action_token_ids = generated_ids[0, -self.get_action_dim(unnorm_key) :].cpu().numpy()
+        discretized_actions = self.vocab_size - predicted_action_token_ids
+        discretized_actions = np.clip(discretized_actions - 1, a_min=0, a_max=self.bin_centers.shape[0] - 1)
+        normalized_actions = self.bin_centers[discretized_actions]
 
-        elif self.policy_setup == "widowx_bridge":
-            action["gripper"] = (
-                2.0 * (raw_action["open_gripper"] > 0.5) - 1.0
-            )  # binarize gripper action to 1 (open) and -1 (close)
-            # self.gripper_is_closed = (action['gripper'] < 0.0)
-
-        action["terminate_episode"] = np.array([0.0])
-
-
-        return _actions, action
-    
-    def visualize_epoch(self, predicted_raw_actions: Sequence[np.ndarray], images: Sequence[np.ndarray], save_path: str) -> None:
-        images = [self._resize_image(image) for image in images]
+        # Unnormalize actions
+        action_norm_stats = self.get_action_stats(unnorm_key)
+        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
+        action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
+        actions = np.where(
+            mask,
+            0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low, [self._resize_image(image) for image in images]
         ACTION_DIM_LABELS = ["x", "y", "z", "roll", "pitch", "yaw", "grasp"]
 
         img_strip = np.concatenate(np.array(images[::3]), axis=1)

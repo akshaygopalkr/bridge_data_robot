@@ -103,7 +103,7 @@ RUN cd openvla && pip install transformers==4.40.1 tokenizers==0.19.1 timm==0.9.
     pip install packaging ninja && \
     pip install "flash-attn==2.5.5" --no-build-isolation
 
-RUN pip install scipy==1.4.0 numba && pip install -U scipy
+RUN pip install scipy==1.4.0 numba transforms3d && pip install -U scipy
 
 # Create alias to python3 widowx_envs/widowx_envs/widowx_env_service.py
 # This is a workaround for pip3 install -e .
