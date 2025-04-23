@@ -429,6 +429,20 @@ class OPENVLAInference:
         action_rotation_ax, action_rotation_angle = euler2axangle(roll, pitch, yaw)
         action_rotation_axangle = action_rotation_ax * action_rotation_angle
         action["rot_axangle"] = action_rotation_axangle
+        
+        raw_action = {
+                "world_vector": np.array(_actions[:3]),
+            "rotation_delta": np.array(_actions[3:6]),
+            "open_gripper": np.array(_actions[6:7]),  # range [0, 1]; 1 = open; 0 = close
+        }
+        
+        action = {}
+        action["world_vector"] = raw_action["world_vector"] 
+        action_rotation_delta = np.asarray(raw_action["rotation_delta"], dtype=np.float64)
+        roll, pitch, yaw = action_rotation_delta
+        action_rotation_ax, action_rotation_angle = euler2axangle(roll, pitch, yaw)
+        action_rotation_axangle = action_rotation_ax * action_rotation_angle
+        action["rot_axangle"] = action_rotation_axangle
         if self.policy_setup == "google_robot":
             current_gripper_action = raw_action["open_gripper"]
 
@@ -457,44 +471,13 @@ class OPENVLAInference:
                 self.sticky_gripper_action = 0.0
 
             print(relative_gripper_action)
-            action# Extract predicted action tokens and translate into (normalized) continuous actions
-        predicted_action_token_ids = generated_ids[0, -self.get_action_dim(unnorm_key) :].cpu().numpy()
-        discretized_actions = self.vocab_size - predicted_action_token_ids
-        discretized_actions = np.clip(discretized_actions - 1, a_min=0, a_max=self.bin_centers.shape[0] - 1)
-        normalized_actions = self.bin_centers[discretized_actions]
+            action["gripper"] = relative_gripper_action
 
-        # Unnormalize actions
-        action_norm_stats = self.get_action_stats(unnorm_key)
-        mask = action_norm_stats.get("mask", np.ones_like(action_norm_stats["q01"], dtype=bool))
-        action_high, action_low = np.array(action_norm_stats["q99"]), np.array(action_norm_stats["q01"])
-        actions = np.where(
-            mask,
-            0.5 * (normalized_actions + 1) * (action_high - action_low) + action_low, [self._resize_image(image) for image in images]
-        ACTION_DIM_LABELS = ["x", "y", "z", "roll", "pitch", "yaw", "grasp"]
-
-        img_strip = np.concatenate(np.array(images[::3]), axis=1)
-
-        # set up plt figure
-        figure_layout = [["image"] * len(ACTION_DIM_LABELS), ACTION_DIM_LABELS]
-        plt.rcParams.update({"font.size": 12})
-        fig, axs = plt.subplot_mosaic(figure_layout)
-        fig.set_size_inches([45, 10])
-
-        # plot actions
-        pred_actions = np.array(
-            [
-                np.concatenate([a["world_vector"], a["rotation_delta"], a["open_gripper"]], axis=-1)
-                for a in predicted_raw_actions
-            ]
-        )
-        for action_dim, action_label in enumerate(ACTION_DIM_LABELS):
-            # actions have batch, horizon, dim, in this example we just take the first action for simplicity
-            axs[action_label].plot(pred_actions[:, action_dim], label="predicted action")
-            axs[action_label].set_title(action_label)
-            axs[action_label].set_xlabel("Time in one episode")
-
-        axs["image"].imshow(img_strip)
-        axs["image"].set_xlabel("Time in one episode (subsampled)")
-        plt.legend()
-        plt.savefig(save_path)
+        elif self.policy_setup == "widowx_bridge":
+            action["gripper"] = (
+                2.0 * (raw_action["open_gripper"] > 0.5) - 1.0
+            )  # binarize gripper action to 1 (open) and -1 (close)
+            # self.gripper_is_closed = (action['gripper'] < 0.0)
+        
+        return _actions, action
 
